@@ -170,13 +170,13 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ sudo ufw allow 8012
 
 # 2. 配置证书路径，以下方式任选其一
-# 2.1 环境变量配置（可选）
+# 2.1 用户配置目录（可选）
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ mkdir -p ~/.config/xr_teleoperate/
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ cp cert.pem key.pem ~/.config/xr_teleoperate/
+# 2.2 环境变量配置（可选）
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ echo 'export XR_TELEOP_CERT="$HOME/xr_teleoperate/teleop/televuer/cert.pem"' >> ~/.bashrc
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ echo 'export XR_TELEOP_KEY="$HOME/xr_teleoperate/teleop/televuer/key.pem"' >> ~/.bashrc
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ source ~/.bashrc
-# 2.2 用户配置目录（可选）
-(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ mkdir -p ~/.config/xr_teleoperate/
-(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ cp cert.pem key.pem ~/.config/xr_teleoperate/
 ```
 
 ```bash
@@ -254,7 +254,7 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 ## 2.1 📥 环境配置
 
-> v1.4 版本仿真部署暂未上线，请暂时使用 v1.3 进行测试
+> 因为图像服务升级为`teleimager`，v1.4 版本仿真部署暂未上线，请暂时使用 v1.3 进行测试
 
 首先，请安装 [unitree_sim_isaaclab](https://github.com/unitreerobotics/unitree_sim_isaaclab)。具体安装步骤，可参考该仓库 README 文档。
 
@@ -311,7 +311,21 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 2. 连接对应的 WiFi 热点
 
-3. 打开浏览器应用（比如 Safari 或 PICO Browser），输入并访问网址：https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012
+3. 如果您头部相机开启了WebRTC功能（`cam_config_server.yaml => head_camera => enable_webrtc: true`），那么执行此步骤，否则直接跳到第 4 步。打开浏览器应用（比如 Safari 或 PICO Browser），输入并访问网址：https://192.168.123.164:60001
+
+   > 注意1：此 IP 地址为开启teleimager图像服务的 PC2 设备 IP
+
+   > 注意2：此时可能弹出类似第4步相同的警告提示。请点击`Advanced`按钮后，继续点击 `Proceed to ip (unsafe)` 按钮，使用非安全方式继续登录WebRTC图像服务器。进入后，点击左上角`start`按钮，如果预览到头部相机图像，那么操作成功。
+   >
+   > <p align="center">
+   >   <a href="https://oss-global-cdn.unitree.com/static/777f9c6f42d74eb2a6438d1509a73025_2475x1574.jpg">
+   >     <img src="https://oss-global-cdn.unitree.com/static/777f9c6f42d74eb2a6438d1509a73025_2475x1574.jpg" alt="webrtc_unsafe" style="width: 50%;">
+   >   </a>
+   > </p>
+   >
+   > 注意3：此步骤目的有两个：一是检测头部相机服务是否正常；二是手动信任 `webrtc` 自签名证书。相同设备与自签名证书条件下执行一次本步骤后，再次启动时可跳过该步。
+
+4. 打开浏览器应用（比如 Safari 或 PICO Browser），输入并访问网址：https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012
 
    > 注意1：此 IP 地址应与您的 **主机** IP 地址匹配。该地址可以使用 `ifconfig` 等类似命令查询。
 
@@ -323,7 +337,7 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
      </a>
    </p>
 
-4. 进入`Vuer`网页界面后，点击 **`Virtual Reality`** 按钮。在允许后续的所有对话框后，启动 VR 会话。界面如下图所示：
+5. 进入`Vuer`网页界面后，点击 **`Virtual Reality`** 按钮。在允许后续的所有对话框后，启动 VR 会话。界面如下图所示：
 
    <p align="center">
      <a href="https://oss-global-cdn.unitree.com/static/fdeee4e5197f416290d8fa9ecc0b28e6_2480x1286.png">
@@ -331,7 +345,7 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
      </a>
    </p>
 
-5. 此时，您将会在 XR 头显设备中看到机器人的第一人称视野。同时，终端打印出链接建立的信息：
+6. 此时，您将会在 XR 头显设备中看到机器人的第一人称视野。同时，终端打印出链接建立的信息：
 
    ```bash
    websocket is connected. id:dbb8537d-a58c-4c57-b49d-cbb91bd25b90
@@ -339,7 +353,7 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
    Uplink task running. id:dbb8537d-a58c-4c57-b49d-cbb91bd25b90
    ```
 
-6. 然后，将手臂形状摆放到与**机器人初始姿态**相接近的姿势。这一步是为了避免在实物部署时，初始位姿差距过大导致机器人产生过大的摆动。
+7. 然后，将手臂形状摆放到与**机器人初始姿态**相接近的姿势。这一步是为了避免在实物部署时，初始位姿差距过大导致机器人产生过大的摆动。
 
    机器人初始姿态示意图如下：
 
@@ -349,9 +363,9 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
      </a>
    </p>
 
-7. 最后，在终端中按下 **r** 键后，正式开启遥操作程序。此时，您可以远程控制机器人的手臂（和灵巧手）
+8. 最后，在终端中按下 **r** 键后，正式开启遥操作程序。此时，您可以远程控制机器人的手臂（和灵巧手）
 
-8. 在遥操过程中，按 **s** 键可开启数据录制，再次按 **s** 键可结束录制并保存数据（该过程可重复）
+9. 在遥操过程中，按 **s** 键可开启数据录制，再次按 **s** 键可结束录制并保存数据（该过程可重复）
 
    数据录制过程示意图如下：
 

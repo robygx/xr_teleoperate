@@ -169,13 +169,13 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ sudo ufw allow 8012
 
 # 2. Configure certificate paths, choose one method
-# 2.1 Environment variables (optional)
+# 2.1 User config directory (optional)
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ mkdir -p ~/.config/xr_teleoperate/
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ cp cert.pem key.pem ~/.config/xr_teleoperate/
+# 2.2 Environment variables (optional)
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ echo 'export XR_TELEOP_CERT="$HOME/xr_teleoperate/teleop/televuer/cert.pem"' >> ~/.bashrc
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ echo 'export XR_TELEOP_KEY="$HOME/xr_teleoperate/teleop/televuer/key.pem"' >> ~/.bashrc
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ source ~/.bashrc
-# 2.2 User config directory (optional)
-(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ mkdir -p ~/.config/xr_teleoperate/
-(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ cp cert.pem key.pem ~/.config/xr_teleoperate/
 ```
 
 
@@ -239,7 +239,7 @@ build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA
 
 ## 2.1 📥 Environment Setup
 
-> The v1.4 version’s simulation deployment is not yet available. Please use v1.3 for testing temporarily.
+> Since the image service has been upgraded to `teleimager`, the simulation deployment for v1.4 is temporarily unavailable. Please use v1.3 for testing for now.
 
 First, install [unitree_sim_isaaclab](https://github.com/unitreerobotics/unitree_sim_isaaclab). Follow that repo’s README.
 
@@ -284,7 +284,20 @@ Next steps:
 
 2. Connect to the corresponding Wi‑Fi
 
-3. Open a browser (e.g. Safari or PICO Browser) and go to:  `https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012`
+3. Only proceed if your head camera has WebRTC enabled (`cam_config_server.yaml → head_camera → enable_webrtc: true`); otherwise jump to Step 4. Open a browser (e.g. Safari or PICO Browser) and go to:  
+   **https://192.168.123.164:60001**
+
+   > **Note 1:** This IP is the address of **PC2**—the machine running teleimager service.  
+   > **Note 2:** You may see a warning page like step 4. Click **Advanced**, then **Proceed to IP (unsafe)**. Once the page loads, press the **start** button in the top-left corner; if you see the head-camera preview, the check is successful.
+
+   > **Note 3:** This step serves two purposes:  
+   >
+   > 1. Verify that the teleimager service is running correctly.  
+   > 2. Manually trust the WebRTC self-signed certificate.  
+   >
+   > Once this has been done on the same device with the same certificate, you can skip it on subsequent launches.
+
+4. Open a browser (e.g. Safari or PICO Browser) and go to:  `https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012`
 
    > **Note 1**: This IP must match your **Host** IP (check with `ifconfig`).
    >
@@ -296,11 +309,11 @@ Next steps:
      </a>
    </p>
 
-4. In the Vuer web, click **Virtual Reality**. Allow all prompts to start the VR session.
+5. In the Vuer web, click **Virtual Reality**. Allow all prompts to start the VR session.
 
    <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/fdeee4e5197f416290d8fa9ecc0b28e6_2480x1286.png">    <img src="https://oss-global-cdn.unitree.com/static/fdeee4e5197f416290d8fa9ecc0b28e6_2480x1286.png" alt="Vuer UI" style="width: 75%;">  </a> </p>
 
-5. You’ll see the robot’s first-person view in the headset. The terminal prints connection info:
+6. You’ll see the robot’s first-person view in the headset. The terminal prints connection info:
 
    ```bash
    websocket is connected. id:dbb8537d-a58c-4c57-b49d-cbb91bd25b90
@@ -308,13 +321,13 @@ Next steps:
    Uplink task running. id:dbb8537d-a58c-4c57-b49d-cbb91bd25b90
    ```
 
-6. Align your arm to the **robot’s initial pose** to avoid sudden movements at start:
+7. Align your arm to the **robot’s initial pose** to avoid sudden movements at start:
 
    <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png">    <img src="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png" alt="Initial Pose" style="width: 25%;">  </a> </p>
 
-7. Press **r** in the terminal to begin teleoperation. You can now control the robot arm and dexterous hand.
+8. Press **r** in the terminal to begin teleoperation. You can now control the robot arm and dexterous hand.
 
-8. During teleoperation, press **s** to start recording; press **s** again to stop and save. Repeatable process.
+9. During teleoperation, press **s** to start recording; press **s** again to stop and save. Repeatable process.
 
 <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/f5b9b03df89e45ed8601b9a91adab37a_2397x1107.png">    <img src="https://oss-global-cdn.unitree.com/static/f5b9b03df89e45ed8601b9a91adab37a_2397x1107.png" alt="Recording Process" style="width: 75%;">  </a> </p>
 
