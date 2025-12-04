@@ -7,6 +7,7 @@ from pinocchio import casadi as cpin
 from pinocchio.visualize import MeshcatVisualizer   
 import os
 import sys
+import pickle
 import logging_mp
 logger_mp = logging_mp.get_logger(__name__)
 parent2_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,72 +22,86 @@ class G1_29_ArmIK:
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
+        # fixed cache file path
+        self.cache_path = "g1_29_model_cache.pkl"
+
         if not self.Unit_Test:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../assets/g1/g1_body29_hand14.urdf', '../assets/g1/')
+            self.urdf_path = '../assets/g1/g1_body29_hand14.urdf'
+            self.model_dir = '../assets/g1/'
         else:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../../assets/g1/g1_body29_hand14.urdf', '../../assets/g1/') # for test
+            self.urdf_path = '../../assets/g1/g1_body29_hand14.urdf'
+            self.model_dir = '../../assets/g1/'
 
-        self.mixed_jointsToLockIDs = [
-                                        "left_hip_pitch_joint" ,
-                                        "left_hip_roll_joint" ,
-                                        "left_hip_yaw_joint" ,
-                                        "left_knee_joint" ,
-                                        "left_ankle_pitch_joint" ,
-                                        "left_ankle_roll_joint" ,
-                                        "right_hip_pitch_joint" ,
-                                        "right_hip_roll_joint" ,
-                                        "right_hip_yaw_joint" ,
-                                        "right_knee_joint" ,
-                                        "right_ankle_pitch_joint" ,
-                                        "right_ankle_roll_joint" ,
-                                        "waist_yaw_joint" ,
-                                        "waist_roll_joint" ,
-                                        "waist_pitch_joint" ,
-                                        
-                                        "left_hand_thumb_0_joint" ,
-                                        "left_hand_thumb_1_joint" ,
-                                        "left_hand_thumb_2_joint" ,
-                                        "left_hand_middle_0_joint" ,
-                                        "left_hand_middle_1_joint" ,
-                                        "left_hand_index_0_joint" ,
-                                        "left_hand_index_1_joint" ,
-                                        
-                                        "right_hand_thumb_0_joint" ,
-                                        "right_hand_thumb_1_joint" ,
-                                        "right_hand_thumb_2_joint" ,
-                                        "right_hand_index_0_joint" ,
-                                        "right_hand_index_1_joint" ,
-                                        "right_hand_middle_0_joint",
-                                        "right_hand_middle_1_joint"
-                                    ]
+        # Try loading cache first
+        if os.path.exists(self.cache_path) and (not self.Visualization):
+            logger_mp.info(f"[G1_29_ArmIK] >>> Loading cached robot model: {self.cache_path}")
+            self.robot, self.reduced_robot = self.load_cache()
+        else:
+            logger_mp.info("[G1_29_ArmIK] >>> Loading URDF (slow)...")
+            self.robot = pin.RobotWrapper.BuildFromURDF(self.urdf_path, self.model_dir)
 
-        self.reduced_robot = self.robot.buildReducedRobot(
-            list_of_joints_to_lock=self.mixed_jointsToLockIDs,
-            reference_configuration=np.array([0.0] * self.robot.model.nq),
-        )
+            self.mixed_jointsToLockIDs = [
+                                            "left_hip_pitch_joint" ,
+                                            "left_hip_roll_joint" ,
+                                            "left_hip_yaw_joint" ,
+                                            "left_knee_joint" ,
+                                            "left_ankle_pitch_joint" ,
+                                            "left_ankle_roll_joint" ,
+                                            "right_hip_pitch_joint" ,
+                                            "right_hip_roll_joint" ,
+                                            "right_hip_yaw_joint" ,
+                                            "right_knee_joint" ,
+                                            "right_ankle_pitch_joint" ,
+                                            "right_ankle_roll_joint" ,
+                                            "waist_yaw_joint" ,
+                                            "waist_roll_joint" ,
+                                            "waist_pitch_joint" ,
+                                            
+                                            "left_hand_thumb_0_joint" ,
+                                            "left_hand_thumb_1_joint" ,
+                                            "left_hand_thumb_2_joint" ,
+                                            "left_hand_middle_0_joint" ,
+                                            "left_hand_middle_1_joint" ,
+                                            "left_hand_index_0_joint" ,
+                                            "left_hand_index_1_joint" ,
+                                            
+                                            "right_hand_thumb_0_joint" ,
+                                            "right_hand_thumb_1_joint" ,
+                                            "right_hand_thumb_2_joint" ,
+                                            "right_hand_index_0_joint" ,
+                                            "right_hand_index_1_joint" ,
+                                            "right_hand_middle_0_joint",
+                                            "right_hand_middle_1_joint"
+                                        ]
 
-        self.reduced_robot.model.addFrame(
-            pin.Frame('L_ee',
-                      self.reduced_robot.model.getJointId('left_wrist_yaw_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.05,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
-        
-        self.reduced_robot.model.addFrame(
-            pin.Frame('R_ee',
-                      self.reduced_robot.model.getJointId('right_wrist_yaw_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.05,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
+            self.reduced_robot = self.robot.buildReducedRobot(
+                list_of_joints_to_lock=self.mixed_jointsToLockIDs,
+                reference_configuration=np.array([0.0] * self.robot.model.nq),
+            )
+
+            self.reduced_robot.model.addFrame(
+                pin.Frame('L_ee',
+                          self.reduced_robot.model.getJointId('left_wrist_yaw_joint'),
+                          pin.SE3(np.eye(3),
+                                  np.array([0.05,0,0]).T),
+                          pin.FrameType.OP_FRAME)
+            )
+            self.reduced_robot.model.addFrame(
+                pin.Frame('R_ee',
+                          self.reduced_robot.model.getJointId('right_wrist_yaw_joint'),
+                          pin.SE3(np.eye(3),
+                                  np.array([0.05,0,0]).T),
+                          pin.FrameType.OP_FRAME)
+            )
+            # Save cache (only after everything is built)
+            if not os.path.exists(self.cache_path):
+                self.save_cache()
+                logger_mp.info(f">>> Cache saved to {self.cache_path}")
 
         # for i in range(self.reduced_robot.model.nframes):
         #     frame = self.reduced_robot.model.frames[i]
         #     frame_id = self.reduced_robot.model.getFrameId(frame.name)
         #     logger_mp.debug(f"Frame ID: {frame_id}, Name: {frame.name}")
-        # for idx, name in enumerate(self.reduced_robot.model.names):
-        #     logger_mp.debug(f"{idx}: {name}")
 
         # Creating Casadi models and data for symbolic computing
         self.cmodel = cpin.Model(self.reduced_robot.model)
@@ -201,7 +216,32 @@ class G1_29_ArmIK:
                         ),
                     )
                 )
-    # If the robot arm is not the same size as your arm :)
+
+    # Save both robot.model and reduced_robot.model
+    def save_cache(self):
+        data = {
+            "robot_model": self.robot.model,
+            "reduced_model": self.reduced_robot.model,
+        }
+
+        with open(self.cache_path, "wb") as f:
+            pickle.dump(data, f)
+
+    # Load both robot.model and reduced_robot.model
+    def load_cache(self):
+        with open(self.cache_path, "rb") as f:
+            data = pickle.load(f)
+
+        robot = pin.RobotWrapper()
+        robot.model = data["robot_model"]
+        robot.data = robot.model.createData()
+
+        reduced_robot = pin.RobotWrapper()
+        reduced_robot.model = data["reduced_model"]
+        reduced_robot.data = reduced_robot.model.createData()
+
+        return robot, reduced_robot
+
     def scale_arms(self, human_left_pose, human_right_pose, human_arm_length=0.60, robot_arm_length=0.75):
         scale_factor = robot_arm_length / human_arm_length
         robot_left_pose = human_left_pose.copy()
@@ -276,47 +316,65 @@ class G1_23_ArmIK:
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
+        # fixed cache file path
+        self.cache_path = "g1_23_model_cache.pkl"
+
         if not self.Unit_Test:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../assets/g1/g1_body23.urdf', '../assets/g1/')
+            self.urdf_path = '../assets/g1/g1_body23.urdf'
+            self.model_dir = '../assets/g1/'
         else:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../../assets/g1/g1_body23.urdf', '../../assets/g1/') # for test
+            self.urdf_path = '../../assets/g1/g1_body23.urdf'
+            self.model_dir = '../../assets/g1/'
 
-        self.mixed_jointsToLockIDs = [
-                                        "left_hip_pitch_joint" ,
-                                        "left_hip_roll_joint" ,
-                                        "left_hip_yaw_joint" ,
-                                        "left_knee_joint" ,
-                                        "left_ankle_pitch_joint" ,
-                                        "left_ankle_roll_joint" ,
-                                        "right_hip_pitch_joint" ,
-                                        "right_hip_roll_joint" ,
-                                        "right_hip_yaw_joint" ,
-                                        "right_knee_joint" ,
-                                        "right_ankle_pitch_joint" ,
-                                        "right_ankle_roll_joint" ,
-                                        "waist_yaw_joint" ,
-                                    ]
+        # Try loading cache first
+        if os.path.exists(self.cache_path) and (not self.Visualization):
+            logger_mp.info(f"[G1_23_ArmIK] >>> Loading cached robot model: {self.cache_path}")
+            self.robot, self.reduced_robot = self.load_cache()
+        else:
+            logger_mp.info("[G1_23_ArmIK] >>> Loading URDF (slow)...")
+            self.robot = pin.RobotWrapper.BuildFromURDF(self.urdf_path, self.model_dir)
 
-        self.reduced_robot = self.robot.buildReducedRobot(
-            list_of_joints_to_lock=self.mixed_jointsToLockIDs,
-            reference_configuration=np.array([0.0] * self.robot.model.nq),
-        )
+            self.mixed_jointsToLockIDs = [
+                                            "left_hip_pitch_joint" ,
+                                            "left_hip_roll_joint" ,
+                                            "left_hip_yaw_joint" ,
+                                            "left_knee_joint" ,
+                                            "left_ankle_pitch_joint" ,
+                                            "left_ankle_roll_joint" ,
+                                            "right_hip_pitch_joint" ,
+                                            "right_hip_roll_joint" ,
+                                            "right_hip_yaw_joint" ,
+                                            "right_knee_joint" ,
+                                            "right_ankle_pitch_joint" ,
+                                            "right_ankle_roll_joint" ,
+                                            "waist_yaw_joint" ,
+                                        ]
 
-        self.reduced_robot.model.addFrame(
-            pin.Frame('L_ee',
-                      self.reduced_robot.model.getJointId('left_wrist_roll_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.20,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
-        
-        self.reduced_robot.model.addFrame(
-            pin.Frame('R_ee',
-                      self.reduced_robot.model.getJointId('right_wrist_roll_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.20,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
+            self.reduced_robot = self.robot.buildReducedRobot(
+                list_of_joints_to_lock=self.mixed_jointsToLockIDs,
+                reference_configuration=np.array([0.0] * self.robot.model.nq),
+            )
+
+            self.reduced_robot.model.addFrame(
+                pin.Frame('L_ee',
+                        self.reduced_robot.model.getJointId('left_wrist_roll_joint'),
+                        pin.SE3(np.eye(3),
+                                np.array([0.20,0,0]).T),
+                        pin.FrameType.OP_FRAME)
+            )
+            
+            self.reduced_robot.model.addFrame(
+                pin.Frame('R_ee',
+                        self.reduced_robot.model.getJointId('right_wrist_roll_joint'),
+                        pin.SE3(np.eye(3),
+                                np.array([0.20,0,0]).T),
+                        pin.FrameType.OP_FRAME)
+            )
+
+            # Save cache (only after everything is built)
+            if not os.path.exists(self.cache_path):
+                self.save_cache()
+                logger_mp.info(f">>> Cache saved to {self.cache_path}")
 
         # for i in range(self.reduced_robot.model.nframes):
         #     frame = self.reduced_robot.model.frames[i]
@@ -436,6 +494,32 @@ class G1_23_ArmIK:
                         ),
                     )
                 )
+
+    # Save both robot.model and reduced_robot.model
+    def save_cache(self):
+        data = {
+            "robot_model": self.robot.model,
+            "reduced_model": self.reduced_robot.model,
+        }
+
+        with open(self.cache_path, "wb") as f:
+            pickle.dump(data, f)
+
+    # Load both robot.model and reduced_robot.model
+    def load_cache(self):
+        with open(self.cache_path, "rb") as f:
+            data = pickle.load(f)
+
+        robot = pin.RobotWrapper()
+        robot.model = data["robot_model"]
+        robot.data = robot.model.createData()
+
+        reduced_robot = pin.RobotWrapper()
+        reduced_robot.model = data["reduced_model"]
+        reduced_robot.data = reduced_robot.model.createData()
+
+        return robot, reduced_robot
+
     # If the robot arm is not the same size as your arm :)
     def scale_arms(self, human_left_pose, human_right_pose, human_arm_length=0.60, robot_arm_length=0.75):
         scale_factor = robot_arm_length / human_arm_length
@@ -512,71 +596,89 @@ class H1_2_ArmIK:
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
+        # fixed cache file path
+        self.cache_path = "h1_2_model_cache.pkl"
+
         if not self.Unit_Test:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../assets/h1_2/h1_2.urdf', '../assets/h1_2/')
+            self.urdf_path = '../assets/h1_2/h1_2.urdf'
+            self.model_dir = '../assets/h1_2/'
         else:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../../assets/h1_2/h1_2.urdf', '../../assets/h1_2/') # for test
+            self.urdf_path = '../../assets/h1_2/h1_2.urdf'
+            self.model_dir = '../../assets/h1_2/'
 
-        self.mixed_jointsToLockIDs = [
-                                      "left_hip_yaw_joint",
-                                      "left_hip_pitch_joint",
-                                      "left_hip_roll_joint",
-                                      "left_knee_joint",
-                                      "left_ankle_pitch_joint",
-                                      "left_ankle_roll_joint",
-                                      "right_hip_yaw_joint",
-                                      "right_hip_pitch_joint",
-                                      "right_hip_roll_joint",
-                                      "right_knee_joint",
-                                      "right_ankle_pitch_joint",
-                                      "right_ankle_roll_joint",
-                                      "torso_joint",
-                                      "L_index_proximal_joint",
-                                      "L_index_intermediate_joint",
-                                      "L_middle_proximal_joint",
-                                      "L_middle_intermediate_joint",
-                                      "L_pinky_proximal_joint",
-                                      "L_pinky_intermediate_joint",
-                                      "L_ring_proximal_joint",
-                                      "L_ring_intermediate_joint",
-                                      "L_thumb_proximal_yaw_joint",
-                                      "L_thumb_proximal_pitch_joint",
-                                      "L_thumb_intermediate_joint",
-                                      "L_thumb_distal_joint",
-                                      "R_index_proximal_joint",
-                                      "R_index_intermediate_joint",
-                                      "R_middle_proximal_joint",
-                                      "R_middle_intermediate_joint",
-                                      "R_pinky_proximal_joint",
-                                      "R_pinky_intermediate_joint",
-                                      "R_ring_proximal_joint",
-                                      "R_ring_intermediate_joint",
-                                      "R_thumb_proximal_yaw_joint",
-                                      "R_thumb_proximal_pitch_joint",
-                                      "R_thumb_intermediate_joint",
-                                      "R_thumb_distal_joint"
-                                    ]
+        # Try loading cache first
+        if os.path.exists(self.cache_path) and (not self.Visualization):
+            logger_mp.info(f"[H1_2_ArmIK] >>> Loading cached robot model: {self.cache_path}")
+            self.robot, self.reduced_robot = self.load_cache()
+        else:
+            logger_mp.info("[H1_2_ArmIK] >>> Loading URDF (slow)...")
+            self.robot = pin.RobotWrapper.BuildFromURDF(self.urdf_path, self.model_dir)
 
-        self.reduced_robot = self.robot.buildReducedRobot(
-            list_of_joints_to_lock=self.mixed_jointsToLockIDs,
-            reference_configuration=np.array([0.0] * self.robot.model.nq),
-        )
+            self.mixed_jointsToLockIDs = [
+                                        "left_hip_yaw_joint",
+                                        "left_hip_pitch_joint",
+                                        "left_hip_roll_joint",
+                                        "left_knee_joint",
+                                        "left_ankle_pitch_joint",
+                                        "left_ankle_roll_joint",
+                                        "right_hip_yaw_joint",
+                                        "right_hip_pitch_joint",
+                                        "right_hip_roll_joint",
+                                        "right_knee_joint",
+                                        "right_ankle_pitch_joint",
+                                        "right_ankle_roll_joint",
+                                        "torso_joint",
+                                        "L_index_proximal_joint",
+                                        "L_index_intermediate_joint",
+                                        "L_middle_proximal_joint",
+                                        "L_middle_intermediate_joint",
+                                        "L_pinky_proximal_joint",
+                                        "L_pinky_intermediate_joint",
+                                        "L_ring_proximal_joint",
+                                        "L_ring_intermediate_joint",
+                                        "L_thumb_proximal_yaw_joint",
+                                        "L_thumb_proximal_pitch_joint",
+                                        "L_thumb_intermediate_joint",
+                                        "L_thumb_distal_joint",
+                                        "R_index_proximal_joint",
+                                        "R_index_intermediate_joint",
+                                        "R_middle_proximal_joint",
+                                        "R_middle_intermediate_joint",
+                                        "R_pinky_proximal_joint",
+                                        "R_pinky_intermediate_joint",
+                                        "R_ring_proximal_joint",
+                                        "R_ring_intermediate_joint",
+                                        "R_thumb_proximal_yaw_joint",
+                                        "R_thumb_proximal_pitch_joint",
+                                        "R_thumb_intermediate_joint",
+                                        "R_thumb_distal_joint"
+                                        ]
 
-        self.reduced_robot.model.addFrame(
-            pin.Frame('L_ee',
-                      self.reduced_robot.model.getJointId('left_wrist_yaw_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.05,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
-        
-        self.reduced_robot.model.addFrame(
-            pin.Frame('R_ee',
-                      self.reduced_robot.model.getJointId('right_wrist_yaw_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.05,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
+            self.reduced_robot = self.robot.buildReducedRobot(
+                list_of_joints_to_lock=self.mixed_jointsToLockIDs,
+                reference_configuration=np.array([0.0] * self.robot.model.nq),
+            )
+
+            self.reduced_robot.model.addFrame(
+                pin.Frame('L_ee',
+                        self.reduced_robot.model.getJointId('left_wrist_yaw_joint'),
+                        pin.SE3(np.eye(3),
+                                np.array([0.05,0,0]).T),
+                        pin.FrameType.OP_FRAME)
+            )
+            
+            self.reduced_robot.model.addFrame(
+                pin.Frame('R_ee',
+                        self.reduced_robot.model.getJointId('right_wrist_yaw_joint'),
+                        pin.SE3(np.eye(3),
+                                np.array([0.05,0,0]).T),
+                        pin.FrameType.OP_FRAME)
+            )
+
+            # Save cache (only after everything is built)
+            if not os.path.exists(self.cache_path):
+                self.save_cache()
+                logger_mp.info(f">>> Cache saved to {self.cache_path}")
 
         # for i in range(self.reduced_robot.model.nframes):
         #     frame = self.reduced_robot.model.frames[i]
@@ -696,6 +798,32 @@ class H1_2_ArmIK:
                         ),
                     )
                 )
+    
+    # Save both robot.model and reduced_robot.model
+    def save_cache(self):
+        data = {
+            "robot_model": self.robot.model,
+            "reduced_model": self.reduced_robot.model,
+        }
+
+        with open(self.cache_path, "wb") as f:
+            pickle.dump(data, f)
+
+    # Load both robot.model and reduced_robot.model
+    def load_cache(self):
+        with open(self.cache_path, "rb") as f:
+            data = pickle.load(f)
+
+        robot = pin.RobotWrapper()
+        robot.model = data["robot_model"]
+        robot.data = robot.model.createData()
+
+        reduced_robot = pin.RobotWrapper()
+        reduced_robot.model = data["reduced_model"]
+        reduced_robot.data = reduced_robot.model.createData()
+
+        return robot, reduced_robot
+
     # If the robot arm is not the same size as your arm :)
     def scale_arms(self, human_left_pose, human_right_pose, human_arm_length=0.60, robot_arm_length=0.75):
         scale_factor = robot_arm_length / human_arm_length
@@ -771,75 +899,93 @@ class H1_ArmIK:
         self.Unit_Test = Unit_Test
         self.Visualization = Visualization
 
+        # fixed cache file path
+        self.cache_path = "h1_model_cache.pkl"
+
         if not self.Unit_Test:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../assets/h1/h1_with_hand.urdf', '../assets/h1/')
+            self.urdf_path = '../assets/h1/h1_with_hand.urdf'
+            self.model_dir = '../assets/h1/'
         else:
-            self.robot = pin.RobotWrapper.BuildFromURDF('../../assets/h1/h1_with_hand.urdf', '../../assets/h1/') # for test
+            self.urdf_path = '../../assets/h1/h1_with_hand.urdf'
+            self.model_dir = '../../assets/h1/'
 
-        self.mixed_jointsToLockIDs = [
-                                        "right_hip_roll_joint",
-                                        "right_hip_pitch_joint",
-                                        "right_knee_joint",
-                                        "left_hip_roll_joint",
-                                        "left_hip_pitch_joint",
-                                        "left_knee_joint",
-                                        "torso_joint",
-                                        "left_hip_yaw_joint",
-                                        "right_hip_yaw_joint",
+        # Try loading cache first
+        if os.path.exists(self.cache_path) and (not self.Visualization):
+            logger_mp.info(f"[H1_ArmIK] >>> Loading cached robot model: {self.cache_path}")
+            self.robot, self.reduced_robot = self.load_cache()
+        else:
+            logger_mp.info("[H1_ArmIK] >>> Loading URDF (slow)...")
+            self.robot = pin.RobotWrapper.BuildFromURDF(self.urdf_path, self.model_dir)
 
-                                        "left_ankle_joint",
-                                        "right_ankle_joint",
+            self.mixed_jointsToLockIDs = [
+                                            "right_hip_roll_joint",
+                                            "right_hip_pitch_joint",
+                                            "right_knee_joint",
+                                            "left_hip_roll_joint",
+                                            "left_hip_pitch_joint",
+                                            "left_knee_joint",
+                                            "torso_joint",
+                                            "left_hip_yaw_joint",
+                                            "right_hip_yaw_joint",
 
-                                        "L_index_proximal_joint",
-                                        "L_index_intermediate_joint",
-                                        "L_middle_proximal_joint",
-                                        "L_middle_intermediate_joint",
-                                        "L_ring_proximal_joint",
-                                        "L_ring_intermediate_joint",
-                                        "L_pinky_proximal_joint",
-                                        "L_pinky_intermediate_joint",
-                                        "L_thumb_proximal_yaw_joint",
-                                        "L_thumb_proximal_pitch_joint",
-                                        "L_thumb_intermediate_joint",
-                                        "L_thumb_distal_joint",
-                                        
-                                        "R_index_proximal_joint",
-                                        "R_index_intermediate_joint",
-                                        "R_middle_proximal_joint",
-                                        "R_middle_intermediate_joint",
-                                        "R_ring_proximal_joint",
-                                        "R_ring_intermediate_joint",
-                                        "R_pinky_proximal_joint",
-                                        "R_pinky_intermediate_joint",
-                                        "R_thumb_proximal_yaw_joint",
-                                        "R_thumb_proximal_pitch_joint",
-                                        "R_thumb_intermediate_joint",
-                                        "R_thumb_distal_joint",
+                                            "left_ankle_joint",
+                                            "right_ankle_joint",
 
-                                        "left_hand_joint",
-                                        "right_hand_joint"  
-                                    ]
+                                            "L_index_proximal_joint",
+                                            "L_index_intermediate_joint",
+                                            "L_middle_proximal_joint",
+                                            "L_middle_intermediate_joint",
+                                            "L_ring_proximal_joint",
+                                            "L_ring_intermediate_joint",
+                                            "L_pinky_proximal_joint",
+                                            "L_pinky_intermediate_joint",
+                                            "L_thumb_proximal_yaw_joint",
+                                            "L_thumb_proximal_pitch_joint",
+                                            "L_thumb_intermediate_joint",
+                                            "L_thumb_distal_joint",
+                                            
+                                            "R_index_proximal_joint",
+                                            "R_index_intermediate_joint",
+                                            "R_middle_proximal_joint",
+                                            "R_middle_intermediate_joint",
+                                            "R_ring_proximal_joint",
+                                            "R_ring_intermediate_joint",
+                                            "R_pinky_proximal_joint",
+                                            "R_pinky_intermediate_joint",
+                                            "R_thumb_proximal_yaw_joint",
+                                            "R_thumb_proximal_pitch_joint",
+                                            "R_thumb_intermediate_joint",
+                                            "R_thumb_distal_joint",
 
-        self.reduced_robot = self.robot.buildReducedRobot(
-            list_of_joints_to_lock=self.mixed_jointsToLockIDs,
-            reference_configuration=np.array([0.0] * self.robot.model.nq),
-        )
+                                            "left_hand_joint",
+                                            "right_hand_joint"  
+                                        ]
 
-        self.reduced_robot.model.addFrame(
-            pin.Frame('L_ee',
-                      self.reduced_robot.model.getJointId('left_elbow_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.2605 + 0.05,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
-        
-        self.reduced_robot.model.addFrame(
-            pin.Frame('R_ee',
-                      self.reduced_robot.model.getJointId('right_elbow_joint'),
-                      pin.SE3(np.eye(3),
-                              np.array([0.2605 + 0.05,0,0]).T),
-                      pin.FrameType.OP_FRAME)
-        )
+            self.reduced_robot = self.robot.buildReducedRobot(
+                list_of_joints_to_lock=self.mixed_jointsToLockIDs,
+                reference_configuration=np.array([0.0] * self.robot.model.nq),
+            )
+
+            self.reduced_robot.model.addFrame(
+                pin.Frame('L_ee',
+                        self.reduced_robot.model.getJointId('left_elbow_joint'),
+                        pin.SE3(np.eye(3),
+                                np.array([0.2605 + 0.05,0,0]).T),
+                        pin.FrameType.OP_FRAME)
+            )
+            
+            self.reduced_robot.model.addFrame(
+                pin.Frame('R_ee',
+                        self.reduced_robot.model.getJointId('right_elbow_joint'),
+                        pin.SE3(np.eye(3),
+                                np.array([0.2605 + 0.05,0,0]).T),
+                        pin.FrameType.OP_FRAME)
+            )
+
+            # Save cache (only after everything is built)
+            if not os.path.exists(self.cache_path):
+                self.save_cache()
+                logger_mp.info(f">>> Cache saved to {self.cache_path}")
 
         # for i in range(self.reduced_robot.model.nframes):
         #     frame = self.reduced_robot.model.frames[i]
@@ -959,6 +1105,32 @@ class H1_ArmIK:
                         ),
                     )
                 )
+
+    # Save both robot.model and reduced_robot.model
+    def save_cache(self):
+        data = {
+            "robot_model": self.robot.model,
+            "reduced_model": self.reduced_robot.model,
+        }
+
+        with open(self.cache_path, "wb") as f:
+            pickle.dump(data, f)
+
+    # Load both robot.model and reduced_robot.model
+    def load_cache(self):
+        with open(self.cache_path, "rb") as f:
+            data = pickle.load(f)
+
+        robot = pin.RobotWrapper()
+        robot.model = data["robot_model"]
+        robot.data = robot.model.createData()
+
+        reduced_robot = pin.RobotWrapper()
+        reduced_robot.model = data["reduced_model"]
+        reduced_robot.data = reduced_robot.model.createData()
+
+        return robot, reduced_robot
+
     # If the robot arm is not the same size as your arm :)
     def scale_arms(self, human_left_pose, human_right_pose, human_arm_length=0.60, robot_arm_length=0.75):
         scale_factor = robot_arm_length / human_arm_length
