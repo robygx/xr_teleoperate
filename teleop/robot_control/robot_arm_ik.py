@@ -990,8 +990,41 @@ class G1_29_ArmIK:
             return current_lr_arm_motor_q, np.zeros(self.reduced_robot.model.nv)     
         
 if __name__ == "__main__":
-    # 启用肘部预测
-    arm_ik = G1_29_ArmIK(Unit_Test = True, Visualization = True, use_elbow_prediction = True)
+    import argparse
+
+    parser = argparse.ArgumentParser(description='G1 Arm IK Test - Fixed Pose or VR Input')
+    parser.add_argument('--input-mode', type=str, choices=['fixed', 'vr'], default='fixed',
+                        help='Input mode: "fixed" for hardcoded poses, "vr" for TeleVuer VR device')
+    parser.add_argument('--use-elbow-pred', action='store_true', help='Enable FiSTA elbow prediction')
+    parser.add_argument('--img-server-ip', type=str, default='192.168.123.164',
+                        help='IP address of image server for TeleVuer')
+    args = parser.parse_args()
+
+    # 初始化 IK 求解器
+    arm_ik = G1_29_ArmIK(Unit_Test=True, Visualization=True, use_elbow_prediction=args.use_elbow_pred)
+
+    # 初始化 TeleVuer (如果使用 VR 模式)
+    tv_wrapper = None
+    if args.input_mode == 'vr':
+        try:
+            from televuer import TeleVuerWrapper
+            tv_wrapper = TeleVuerWrapper(
+                use_hand_tracking=True,
+                binocular=False,
+                img_shape=(720, 1280),
+                display_mode='pass-through',
+                zmq=False,
+                webrtc=False,
+            )
+            logger_mp.info("✓ TeleVuer initialized for VR input mode")
+        except ImportError as e:
+            logger_mp.error(f"Failed to import TeleVuer: {e}")
+            logger_mp.error("Falling back to fixed pose mode")
+            args.input_mode = 'fixed'
+        except Exception as e:
+            logger_mp.error(f"Failed to initialize TeleVuer: {e}")
+            logger_mp.error("Falling back to fixed pose mode")
+            args.input_mode = 'fixed'
 
     # ===== 选择坐标系模式 =====
     USE_SHOULDER_FRAME = True  # True: 在肩部坐标系下进行IK求解; False: 在世界坐标系下进行IK求解
@@ -1021,23 +1054,77 @@ if __name__ == "__main__":
         np.array([0.25, -0.15, -0.15]),
     )
 
-    logger_mp.info(f"=== IK求解模式: {'肩部坐标系' if USE_SHOULDER_FRAME else '世界坐标系'} ===")
-    if USE_SHOULDER_INPUT:
-        logger_mp.info(f"左目标 (肩部坐标): 位置={Shoulder_L_tf_target.translation}")
-        logger_mp.info(f"右目标 (肩部坐标): 位置={Shoulder_R_tf_target.translation}")
+    # ===== VR 模式配置 =====
+    if args.input_mode == 'vr':
+        logger_mp.info("=" * 70)
+        logger_mp.info("🥽 VR INPUT MODE ENABLED")
+        logger_mp.info("=" * 70)
+        logger_mp.info("TeleVuer will provide real-time hand poses from VR device")
+        logger_mp.info(f"Elbow prediction: {'ENABLED' if args.use_elbow_pred else 'DISABLED'}")
+        logger_mp.info(f"IK coordinate frame: {'Shoulder' if USE_SHOULDER_FRAME else 'World'}")
+        logger_mp.info("=" * 70)
     else:
-        logger_mp.info(f"左目标 (世界坐标): 位置={L_tf_target.translation}")
-        logger_mp.info(f"右目标 (世界坐标): 位置={R_tf_target.translation}")
+        # ===== 固定位姿模式配置 =====
+        rotation_speed = 0.02
+        noise_amplitude_translation = 0.005
+        noise_amplitude_rotation = 0.05
 
-    rotation_speed = 0.02
-    noise_amplitude_translation = 0.005
-    noise_amplitude_rotation = 0.05
+        logger_mp.info("=" * 70)
+        logger_mp.info("📏 FIXED POSE MODE")
+        logger_mp.info("=" * 70)
+        logger_mp.info(f"IK求解模式: {'肩部坐标系' if USE_SHOULDER_FRAME else '世界坐标系'}")
+        if USE_SHOULDER_INPUT:
+            logger_mp.info(f"左目标 (肩部坐标): 位置={Shoulder_L_tf_target.translation}")
+            logger_mp.info(f"右目标 (肩部坐标): 位置={Shoulder_R_tf_target.translation}")
+        else:
+            logger_mp.info(f"左目标 (世界坐标): 位置={L_tf_target.translation}")
+            logger_mp.info(f"右目标 (世界坐标): 位置={R_tf_target.translation}")
+        logger_mp.info("=" * 70)
 
     try:
-        user_input = input("Please enter the start signal (enter 's' to start the subsequent program):\n")
-        if user_input.lower() == 's':
-            step = 0
-            while True:
+        if args.input_mode == 'fixed':
+            user_input = input("\nPress 's' to start fixed pose IK test:\n")
+            if user_input.lower() != 's':
+                logger_mp.info("Exiting...")
+                sys.exit(0)
+
+        step = 0
+        logger_mp.info("\n" + "=" * 70)
+        logger_mp.info("🚀 Starting IK loop...")
+        logger_mp.info("=" * 70 + "\n")
+
+        while True:
+            # ===== VR 输入模式 =====
+            if args.input_mode == 'vr' and tv_wrapper is not None:
+                try:
+                    # 从 TeleVuer 获取手部位姿
+                    tele_data = tv_wrapper.get_tele_data()
+                    left_wrist_pose = tele_data.left_wrist_pose
+                    right_wrist_pose = tele_data.right_wrist_pose
+
+                    if step % 30 == 0:  # 每30帧打印一次状态
+                        logger_mp.info(f"[VR Mode] Step {step}: "
+                                     f"L_pos={left_wrist_pose[:3, 3]}, "
+                                     f"R_pos={right_wrist_pose[:3, 3]}")
+
+                    # 调用 IK 求解（VR输入通常是世界坐标系）
+                    arm_ik.solve_ik(
+                        left_wrist_pose,
+                        right_wrist_pose,
+                        use_shoulder_frame=USE_SHOULDER_FRAME,
+                        input_coordinate_frame='world'
+                    )
+
+                    step += 1
+                    time.sleep(0.033)  # ~30Hz
+
+                except Exception as e:
+                    logger_mp.error(f"VR input error: {e}")
+                    time.sleep(0.1)
+                    continue
+
+            # ===== 固定位姿模式 =====
+            else:
                 logger_mp.info(f"IK loop step={step}")
                 # Apply rotation noise with bias towards y and z axes
                 rotation_noise_L = pin.Quaternion(
@@ -1095,4 +1182,12 @@ if __name__ == "__main__":
                 time.sleep(0.1)
     except KeyboardInterrupt:
         logger_mp.info("Interrupted by user. Shutting down cleanly.")
+    finally:
+        # 清理 TeleVuer 连接
+        if tv_wrapper is not None:
+            try:
+                tv_wrapper.close()
+                logger_mp.info("✓ TeleVuer connection closed")
+            except Exception as e:
+                logger_mp.error(f"Failed to close TeleVuer: {e}")
         sys.exit(0)
